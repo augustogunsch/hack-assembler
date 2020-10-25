@@ -12,7 +12,6 @@
 #define ADD_STR_LEN 7
 #define INST_SIZE 17
 #define C_TOKEN_SIZE 4
-#define VARS_START_INDEX 16
 
 #define CMP_SIZE 8
 #define CMP_TABLE_SIZE 27
@@ -323,7 +322,7 @@ void replacevar(struct line* ln, int val) {
 }
 
 void stripvars(struct symbol** vars, int* varscount, struct symbol** labels, int* labelscount, struct line** lns, int lnscount) {
-	int varsramind = VARS_START_INDEX;
+	int varsramind = BOT_VAR;
 	for(int i = 0; i < lnscount; i++) {
 		if(lns[i]->ln[0] == '@') {
 			char* afterat = lns[i]->ln+sizeof(char);
