@@ -183,7 +183,7 @@ void populatevars(struct symbol** vars, int* varscount) {
 	*varscount = firstamnt+ramvamnt+2;
 }
 
-void countvars(FILE* input, int* lnscount, int* labelscount) {
+void countstuff(FILE* input, int* lnscount, int* labelscount) {
 	char c;
 	while(c = fgetc(input), c != -1) {
 		if(c == '\n') {
@@ -472,7 +472,7 @@ int main(int argc, char* argv[]) {
 	// line chopping
 	int lnscount = 0;
 	int labelscount = 0;
-	countvars(input, &lnscount, &labelscount);
+	countstuff(input, &lnscount, &labelscount);
 	struct line* lns[lnscount]; // some lines will be empty/comments/labels, so this array is bigger than needed
 
 	struct symbol* labels[labelscount];
