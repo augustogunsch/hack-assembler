@@ -4,8 +4,6 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#define LN_WIDTH 500
-#define SYMBOL_WIDTH 500
 #define RAM_LIMIT 24576
 #define TOP_VAR 16383
 #define BOT_VAR 16
@@ -182,29 +180,51 @@ void populatevars(struct symbol** vars, int* varscount) {
 	*varscount = firstamnt+ramvamnt+2;
 }
 
-void countstuff(FILE* input, int* lnscount, int* labelscount) {
+void gatherinfo(FILE* input, int* lnscount, int* labelscount, int* maxwidth) {
 	char c;
+	unsigned char readsmt = 0;
+	int lnwidth = 1;
 	while(c = fgetc(input), c != -1) {
 		if(c == '\n') {
-			(*lnscount)++;
+			if(lnwidth > *maxwidth)
+				*maxwidth = lnwidth;
+			if(readsmt)
+				(*lnscount)++;
+			readsmt = 0;
+			lnwidth = 1;
 			continue;
 		}
-		if(c == '(')
+		if(c == '(') {
 			(*labelscount)++;
+			continue;
+		}
+		if(c == '/') {
+			char nc = fgetc(input);
+			if(nc == '/') {
+				skipln(input);
+				continue;
+			}
+			ungetc(nc, input);
+		}
+		if(isspace(c)) {
+			continue;
+		}
+		readsmt = 1;
+		lnwidth++;
 	}
 	rewind(input);
 }
 
-struct symbol* readlabel(FILE* input, int ln, int trueln) {
-	char* name = (char*)malloc(sizeof(char)*(SYMBOL_WIDTH+1));
+struct symbol* readlabel(FILE* input, int ln, int trueln, int lnwidth) {
+	char* name = (char*)malloc(sizeof(char)*(lnwidth-1));
 	int i = 0;
 	char c;
 	while(c = fgetc(input), c != -1) {
 		if(c == ')')
 			break;
-		if(i == SYMBOL_WIDTH) {
+		if(i == lnwidth-2) {
 			fprintf(stderr, "Label width bigger than the maximum (%i characters); line %i\n", 
-				SYMBOL_WIDTH, trueln+1);
+				lnwidth-2, trueln+1);
 			exit(1);
 		}
 		if(c == '\n') {
@@ -228,9 +248,9 @@ struct symbol* readlabel(FILE* input, int ln, int trueln) {
 
 // Splits the stream into an array of strings, stripping comments, white spaces and labels
 // Requires vars array to check for duplicate symbols, but doesn't modify it
-int chop(FILE* input, struct symbol** vars, int varscount, struct symbol** labels, int* labelscount, struct line** lns) {
+int chop(FILE* input, struct symbol** vars, int varscount, struct symbol** labels, int* labelscount, struct line** lns, int lnwidth) {
 	char c;
-	char tmpln[LN_WIDTH];
+	char tmpln[lnwidth];
 	int lnscount = 0;
 	int truelnscount = 1;
 	int lnind = 0;
@@ -277,7 +297,7 @@ int chop(FILE* input, struct symbol** vars, int varscount, struct symbol** label
 				exit(1);
 			}
 
-			struct symbol* l = readlabel(input, lnscount, truelnscount);
+			struct symbol* l = readlabel(input, lnscount, truelnscount, lnwidth);
 			if(getsymb(l->name, vars, varscount, labels, *labelscount) != -1) {
 				fprintf(stderr, "Already defined symbol '%s'; line %i\n", l->name, truelnscount);
 				exit(1);
@@ -303,8 +323,8 @@ int chop(FILE* input, struct symbol** vars, int varscount, struct symbol** label
 			exit(1);
 		}
 		
-		if(LN_WIDTH-1 == lnind) {
-			fprintf(stderr, "Reached line width limit (%i); line %i\n", LN_WIDTH, lnscount+1);
+		if(lnwidth-1 == lnind) {
+			fprintf(stderr, "Reached line width limit (%i); line %i\n", lnwidth, lnscount+1);
 			exit(1);
 		}
 		
@@ -468,12 +488,14 @@ int main(int argc, char* argv[]) {
 		return errno;
 	}
 	
-	// line chopping
+	// info gathering
 	int lnscount = 0;
 	int labelscount = 0;
-	countstuff(input, &lnscount, &labelscount);
-	struct line* lns[lnscount]; // some lines will be empty/comments/labels, so this array is bigger than needed
+	int lnwidth = 0;
+	gatherinfo(input, &lnscount, &labelscount, &lnwidth);
+	struct line* lns[lnscount];
 
+	// line chopping
 	struct symbol* labels[labelscount];
 	labelscount = 0;
 
@@ -481,7 +503,7 @@ int main(int argc, char* argv[]) {
 	int varscount = 0;
 	populatevars(vars, &varscount);
 
-	lnscount = chop(input, vars, varscount, labels, &labelscount, lns); // let's forget those empty lines
+	lnscount = chop(input, vars, varscount, labels, &labelscount, lns, lnwidth);
 	fclose(input);
 
 	// variable substitution
