@@ -7,9 +7,10 @@
 #define RAM_LIMIT 24577
 #define TOP_VAR 16383
 #define BOT_VAR 16
-#define ADD_STR_LEN 7
+#define ADD_STR_SIZE 7
 #define INST_SIZE 17
 #define C_TOKEN_SIZE 4
+#define INST_LIMIT 32768
 
 #define CMP_SIZE 8
 #define CMP_TABLE_SIZE 27
@@ -183,13 +184,20 @@ void populatevars(struct symbol** vars, int* varscount) {
 void gatherinfo(FILE* input, int* lnscount, int* labelscount, int* maxwidth) {
 	char c;
 	unsigned char readsmt = 0;
+	int truelnscount = 1;
 	int lnwidth = 1;
 	while(c = fgetc(input), c != -1) {
 		if(c == '\n') {
+			truelnscount++;
 			if(lnwidth > *maxwidth)
 				*maxwidth = lnwidth;
-			if(readsmt)
+			if(readsmt) {
+				if(*lnscount == INST_LIMIT) {
+					fprintf(stderr, "Reached instruction limit (%i); line %i\n", INST_LIMIT, truelnscount);
+					exit(1);
+				}
 				(*lnscount)++;
+			}
 			readsmt = 0;
 			lnwidth = 1;
 			continue;
@@ -202,6 +210,7 @@ void gatherinfo(FILE* input, int* lnscount, int* labelscount, int* maxwidth) {
 			char nc = fgetc(input);
 			if(nc == '/') {
 				skipln(input);
+				truelnscount++;
 				continue;
 			}
 			ungetc(nc, input);
@@ -336,8 +345,8 @@ int chop(FILE* input, struct symbol** vars, int varscount, struct symbol** label
 
 void replacevar(struct line* ln, int val) {
 	free(ln->ln);
-	char* newln = (char *)malloc(sizeof(char)*ADD_STR_LEN);
-	snprintf(newln, ADD_STR_LEN, "@%i", val);
+	char* newln = (char *)malloc(sizeof(char)*ADD_STR_SIZE);
+	snprintf(newln, ADD_STR_SIZE, "@%i", val);
 	ln->ln = newln;
 }
 
