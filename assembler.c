@@ -184,11 +184,13 @@ void populatevars(struct symbol** vars, int* varscount) {
 void gatherinfo(FILE* input, int* lnscount, int* labelscount, int* maxwidth) {
 	char c;
 	unsigned char readsmt = 0;
+	unsigned char comment = 0;
 	int truelnscount = 1;
 	int lnwidth = 1;
 	while(c = fgetc(input), c != -1) {
 		if(c == '\n') {
 			truelnscount++;
+			comment = 0;
 			if(lnwidth > *maxwidth)
 				*maxwidth = lnwidth;
 			if(readsmt) {
@@ -202,15 +204,17 @@ void gatherinfo(FILE* input, int* lnscount, int* labelscount, int* maxwidth) {
 			lnwidth = 1;
 			continue;
 		}
+		if(comment)
+			continue;
 		if(c == '(') {
 			(*labelscount)++;
+			comment = 1;
 			continue;
 		}
 		if(c == '/') {
 			char nc = fgetc(input);
 			if(nc == '/') {
-				skipln(input);
-				truelnscount++;
+				comment = 1;
 				continue;
 			}
 			ungetc(nc, input);
@@ -374,8 +378,12 @@ void stripvars(struct symbol** vars, int* varscount, struct symbol** labels, int
 	}
 }
 
-void transa(char* in, char* out) {
+void transa(char* in, char* out, int trueln) {
 	int add = atoi(in+sizeof(char));
+	if(add >= INST_LIMIT) {
+		fprintf(stderr, "'A' instruction cannot reference addresses bigger than %i; line %i\n", INST_LIMIT-1, trueln);
+		exit(1);
+	}
 	int lastbit = 1 << 15;
 	for(int i = INST_SIZE-2;i > 0; i--) {
 		if(add & (lastbit >> i))
@@ -467,7 +475,7 @@ char** translate(struct line** lns, int lnscount) {
 
 	for(int i = 0; i < lnscount; i++)
 		if(lns[i]->ln[0] == '@')
-			transa(lns[i]->ln, assembled[i]);
+			transa(lns[i]->ln, assembled[i], lns[i]->truen);
 		else
 			transb(lns[i]->ln, assembled[i], lns[i]->truen);
 	return assembled;
@@ -487,7 +495,7 @@ int main(int argc, char* argv[]) {
 	int fnamelen = strlen(argv[1]);
 	int invalidext = strcmp(argv[1]+(fnamelen*sizeof(char)-(4*sizeof(char))), ".asm");
 	if(invalidext) {
-		fprintf(stderr, "Invalid extension (must be *.asm)");
+		fprintf(stderr, "Invalid extension (must be *.asm)\n");
 		return 1;
 	}
 	FILE* input = fopen(argv[1], "r");
