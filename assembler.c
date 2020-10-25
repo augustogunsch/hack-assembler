@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#define RAM_LIMIT 24576
+#define RAM_LIMIT 24577
 #define TOP_VAR 16383
 #define BOT_VAR 16
 #define ADD_STR_LEN 7
@@ -493,10 +493,10 @@ int main(int argc, char* argv[]) {
 	int labelscount = 0;
 	int lnwidth = 0;
 	gatherinfo(input, &lnscount, &labelscount, &lnwidth);
-	struct line* lns[lnscount];
+	struct line** lns = (struct line**)malloc(sizeof(struct line*)*lnscount); // has to be on the heap; can be huge and cause a stack overflow
 
 	// line chopping
-	struct symbol* labels[labelscount];
+	struct symbol** labels = (struct symbol**)malloc(sizeof(struct symbol*)*labelscount); // same for this one
 	labelscount = 0;
 
 	struct symbol* vars[TOP_VAR - BOT_VAR];
@@ -510,6 +510,7 @@ int main(int argc, char* argv[]) {
 	stripvars(vars, &varscount, labels, &labelscount, lns, lnscount);
 	freesymbols(vars, varscount);
 	freesymbols(labels, labelscount);
+	free(labels);
 	
 	// actual translation
 	char** bin = translate(lns, lnscount);
@@ -517,6 +518,7 @@ int main(int argc, char* argv[]) {
 		free(lns[i]->ln);
 		free(lns[i]);
 	}
+	free(lns);
 
 	// file output
 	char outf[fnamelen+2];
