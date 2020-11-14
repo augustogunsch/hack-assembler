@@ -13,7 +13,7 @@
 #define INST_LIMIT 32768
 
 #define CMP_SIZE 8
-#define CMP_TABLE_SIZE 27
+#define CMP_TABLE_SIZE 28
 const char* cmptable[] = 
 {
 	"0", "0101010",
@@ -36,6 +36,7 @@ const char* cmptable[] =
 	"D|A", "0010101",
 	"M", "1110000",
 	"!M", "1110001",
+	"-M", "1110011",
 	"M+1", "1110111",
 	"M-1", "1110010",
 	"D+M", "1000010",
