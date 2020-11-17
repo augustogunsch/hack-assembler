@@ -13,8 +13,8 @@
 #define INST_LIMIT 32768
 
 #define CMP_SIZE 8
-#define CMP_TABLE_SIZE 28
-const char* cmptable[] = 
+#define CMP_TABLE_SIZE 37
+const char* cmptable[CMP_TABLE_SIZE] = 
 {
 	"0", "0101010",
 	"1", "0111111",
