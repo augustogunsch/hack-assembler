@@ -1,4 +1,4 @@
-FILES = assembler.c main.c util.c 
+FILES = assembler.c main.c util.c parser.c
 INCLUDES = -I.
 CFLAGS = -std=c99
 OUTFILE = assembler

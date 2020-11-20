@@ -12,6 +12,14 @@ char* getoutname(char* fname, int fnamelen) {
 	return outf;
 }
 
+void printlns(LINELIST* lns, FILE* stream) {
+	LINELIST* curln = lns;
+	while(curln != NULL) {
+		fprintf(stream, "%s\n", curln->content);
+		curln = curln->next;
+	}
+}
+
 int main(int argc, char* argv[]) {
 	if(argc < 2) {
 		printf("Usage: %s {input}\n", argv[0]);
@@ -31,7 +39,10 @@ int main(int argc, char* argv[]) {
 		return errno;
 	}
 	
-	ASSEMBLER* a = mkassembler(input);
+	PARSER* p = mkparser(input);
+	parse(p);
+
+	ASSEMBLER* a = mkassembler(p->output);
 
 	// variable substitution
 	preprocess(a);
@@ -47,10 +58,8 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "%s\n", strerror(errno));
 		return errno;
 	}
-
-	for(int i = 0; i < a->lns->count; i++) {
-		fprintf(output, "%s\n", a->lns->items[i]->content);
-	}
+	
+	printlns(a->lns, output);
 
 	free(outf);
 	freeassembler(a);

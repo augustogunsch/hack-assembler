@@ -17,17 +17,14 @@ void skipln(ASSEMBLER* a);
 void readrest(ASSEMBLER* a, int trueln);
 int isvar(char* var);
 void initsymbols(SYMBOLARRAY* s);
-ASSEMBLER* mkassembler(FILE* input);
 void populatevars(ASSEMBLER* a);
-SYMBOL* readlabel(ASSEMBLER* a, int trueln);
-void chop(ASSEMBLER* a);
-void replacevar(SYMBOL* ln, int val);
+SYMBOL* readlabel(ASSEMBLER* a, LINELIST* ln, int count);
+void replacevar(LINELIST* ln, int val);
 void preprocess(ASSEMBLER* a);
-void transa(SYMBOL* ln);
+void transa(LINELIST* ln);
 char* lookctable(TABLE* t, bool cond, char* token, const char* fieldname, int trueln);
-void transb(SYMBOL* ln);
+void transb(LINELIST* ln);
 void translate(ASSEMBLER* a);
-void gatherinfo(ASSEMBLER* a);
 void freeassembler(ASSEMBLER* a);
 
 void expandsymbols(SYMBOLARRAY* a, int toaddn) {
@@ -77,33 +74,6 @@ int getsymbol(ASSEMBLER* a, char* name) {
 	return -1;
 }
 
-void skipln(ASSEMBLER* a) {
-	char c;
-	while(c = fgetc(a->input), c != -1)
-		if(c == '\n')
-			break;
-}
-
-void readrest(ASSEMBLER* a, int trueln) {
-	char c;
-	while(c = fgetc(a->input), c != -1) {
-		if(c == '\n')
-			break;
-		if(isspace(c))
-			continue;
-		if(c == '/') {
-			char nc = fgetc(a->input);
-			if(nc == '/') {
-				skipln(a);
-				break;
-			}
-			ungetc(nc, a->input);
-		}
-		fprintf(stderr, "Unexpected '%c' at line '%i'\n", c, trueln);
-		exit(1);
-	}
-}
-
 int isvar(char* var) {
 	int i = 0;
 	while(1) {
@@ -117,27 +87,22 @@ int isvar(char* var) {
 }
 
 void initsymbols(SYMBOLARRAY* s) {
-	s->size = s->count * sizeof(SYMBOL*);
+	s->size = 150 * sizeof(SYMBOL*);
 	s->items = (SYMBOL**)malloc(s->size);
 	s->count = 0;
 }
 
-ASSEMBLER* mkassembler(FILE* input) {
+ASSEMBLER* mkassembler(LINELIST* input) {
 	ASSEMBLER* a = (ASSEMBLER*)malloc(sizeof(ASSEMBLER));
-	a->lns = (SYMBOLARRAY*)malloc(sizeof(SYMBOLARRAY));
 	a->labels = (SYMBOLARRAY*)malloc(sizeof(SYMBOLARRAY));
 	a->vars = (SYMBOLARRAY*)malloc(sizeof(SYMBOLARRAY));
-	a->input = input;
+	a->lns = input;
 
-	gatherinfo(a);
-
-	initsymbols(a->lns);
 	initsymbols(a->labels);
-	a->vars->count = 80; // arbitrary number for initial size
 	initsymbols(a->vars);
 
 	populatevars(a);
-	chop(a);
+	a->varsramind = BOTTOM_VAR;
 
 	return a;
 }
@@ -183,117 +148,39 @@ void populatevars(ASSEMBLER* a) {
 	a->vars->items[firstamnt+ramvamnt+1] = mksymbol("KBD", 4, 24576);
 }
 
-SYMBOL* readlabel(ASSEMBLER* a, int trueln) {
-	char* name = (char*)malloc(sizeof(char)*(a->maxwidth-1));
-	int i = 0;
+SYMBOL* readlabel(ASSEMBLER* a, LINELIST* ln, int count) {
+	int i = 1;
 	char c;
-	int maxind = a->maxwidth-2;
-	while(c = fgetc(a->input), c != -1) {
-		if(c == ')')
+	while(true) {
+		c = ln->content[i];
+		if(c == ')') 
 			break;
-		if(i == maxind) {
-			fprintf(stderr, "Label width bigger than the maximum (%i characters); line %i\n", 
-				maxind, trueln+1);
-			exit(1);
-		}
-		if(c == '\n') {
-			fprintf(stderr, "Unexpected end of line; line %i\n", trueln+1);
+		if(c == '\0') {
+			fprintf(stderr, "Unexpected end of line; line %i\n", ln->truen+1);
 			exit(1);
 		}
 		if(isspace(c) || c == '(') {
-			fprintf(stderr, "Unexpected '%c'; line %i\n", c, trueln+1);
+			fprintf(stderr, "Unexpected '%c'; line %i\n", c, ln->truen+1);
 			exit(1);
 		}
-		name[i] = c;
 		i++;
 	}
-	name[i] = '\0';
-	readrest(a, trueln);
+
+	if (i == 1) {
+		fprintf(stderr, "Label has no content; line %i\n", ln->truen+1);
+		exit(1);
+	}
+
+	int size = i * sizeof(char);
+	char* name = (char*)malloc(size);
+	snprintf(name, size, "%s", ln->content+sizeof(char));
 	SYMBOL* l = (SYMBOL*)malloc(sizeof(SYMBOL));
 	l->name = name;
-	l->value = a->lns->count;
+	l->value = count;
 	return l;
 }
 
-// Splits the stream into an array of strings, stripping comments, white spaces and labels
-// Requires vars array to check for duplicate symbols, but doesn't modify it
-void chop(ASSEMBLER* a) {
-	char c;
-	char tmpln[a->maxwidth];
-	int lnind = 0;
-	int lnscount = 0;
-	int truelnscount = 1;
-
-	bool comment = false;
-	bool spacedln = false;
-	while(c = fgetc(a->input), c != -1) {
-		if(c == '\n') {
-			if(comment) {
-				comment = false;
-				ungetc(c, a->input);
-				continue;
-			}
-			truelnscount++;
-			if(!lnind)
-				continue;
-
-			tmpln[lnind] = '\0';
-
-			pushsymbol(a->lns, mksymbol(tmpln, lnind+1, truelnscount));
-
-			lnind = 0;
-			spacedln = false;
-			lnscount++;
-			continue;
-		}
-
-		if(comment)
-			continue;
-
-		if(isspace(c)) {
-			if(lnind)	
-				spacedln = true;
-			continue;
-		}
-
-		if(c == '(') {
-			if(lnind) {
-				fprintf(stderr, "Unexpected char '%c'; line %i:%i\n", c, truelnscount, lnind+1);
-				exit(1);
-			}
-
-			SYMBOL* l = readlabel(a, truelnscount);
-			if(getsymbol(a, l->name) != -1) {
-				fprintf(stderr, "Already defined symbol '%s'; line %i\n", l->name, truelnscount);
-				exit(1);
-			}
-
-			pushsymbol(a->labels, l);
-			truelnscount++;
-			continue;
-		}
-		
-		if(c == '/') {
-			char nc = fgetc(a->input);
-			if(nc == '/') {
-				comment = true;
-				continue;
-			}
-			ungetc(nc, a->input);
-		}
-
-		if(spacedln) {
-			fprintf(stderr, "Unexpected char '%c'; line %i:%i\n", c, lnscount+1, lnind+1);
-			exit(1);
-		}
-		
-		tmpln[lnind] = c;
-		lnind++;
-	}
-	fclose(a->input);
-}
-
-void replacevar(SYMBOL* ln, int val) {
+void replacevar(LINELIST* ln, int val) {
 	free(ln->content);
 	int size = sizeof(char)*(countplaces(val) + 2);
 	char* newln = (char *)malloc(size);
@@ -301,30 +188,72 @@ void replacevar(SYMBOL* ln, int val) {
 	ln->content = newln;
 }
 
-void preprocess(ASSEMBLER* a) {
-	int varsramind = BOTTOM_VAR;
-	for(int i = 0; i < a->lncount; i++) {
-		if(a->lns->items[i]->content[0] == '@') {
-			char* afterat = a->lns->items[i]->content+sizeof(char);
-			if(isvar(afterat)) {
-				int val = getsymbol(a, afterat);
-				if(val == -1) {
-					if(varsramind == RAM_LIMIT) {
-						fprintf(stderr, "Variable amount reached RAM limit (%i); line %i\n", RAM_LIMIT, a->lns->items[i]->truen);
-						exit(1);
-					}
-					SYMBOL* var = mksymbol(afterat, strlen(afterat)+1, varsramind);
-					varsramind++;
-					pushsymbol(a->vars, var);
-					val = var->value;
-				}
-				replacevar(a->lns->items[i], val);
+void handlevarsymbol(ASSEMBLER* a, LINELIST* ln) {
+	char* afterat = ln->content+sizeof(char);
+	if(isvar(afterat)) {
+		int val = getsymbol(a, afterat);
+		if(val == -1) {
+			if(a->varsramind == RAM_LIMIT) {
+				fprintf(stderr, "Variable amount reached RAM limit (%i); line %i\n", RAM_LIMIT, ln->truen);
+				exit(1);
 			}
+			SYMBOL* var = mksymbol(afterat, strlen(afterat)+1, a->varsramind);
+			a->varsramind++;
+			pushsymbol(a->vars, var);
+			val = var->value;
+		}
+		replacevar(ln, val);
+	}
+}
+
+void handlelabelsymbol(ASSEMBLER* a, LINELIST* ln, int count) {
+	SYMBOL* l = readlabel(a, ln, count);
+	if(getsymbol(a, l->name) != -1) {
+		fprintf(stderr, "Already defined symbol '%s'; line %i\n", l->name, ln->truen);
+		exit(1);
+	}
+
+	pushsymbol(a->labels, l);
+}
+
+void stripvars(ASSEMBLER* a) {
+	LINELIST* curln = a->lns;
+	while(curln != NULL) {
+		if(curln->content[0] == '@')
+				handlevarsymbol(a, curln);
+		curln = curln->next;
+	}
+}
+
+void striplabels(ASSEMBLER* a) {
+	LINELIST* curln = a->lns;
+	LINELIST* lastln;
+	int count = 0;
+	while(curln != NULL) {
+		if(curln->content[0] == '(') {
+			handlelabelsymbol(a, curln, count);
+			if(count > 0)
+				lastln->next = curln->next;
+			else
+				a->lns = curln->next;
+			LINELIST* tmp = curln;
+			curln = curln->next;
+			free(tmp);
+		}
+		else {
+			lastln = curln;
+			curln = curln->next;
+			count++;
 		}
 	}
 }
 
-void transa(SYMBOL* ln) {
+void preprocess(ASSEMBLER* a) {
+	striplabels(a);
+	stripvars(a);
+}
+
+void transa(LINELIST* ln) {
 	int add = atoi(ln->content+sizeof(char));
 
 	if(add >= INST_LIMIT) {
@@ -369,7 +298,7 @@ char* lookctable(TABLE* t, bool cond, char* token, const char* fieldname, int tr
 	exit(1);
 }
 
-void transb(SYMBOL* ln) {
+void transb(LINELIST* ln) {
 	bool hasjmp = false;
 	bool hasdest = false;
 	bool hascmp = false;
@@ -377,7 +306,7 @@ void transb(SYMBOL* ln) {
 	int tmpi = 0;
 	char tmp[C_TOKEN_SIZE], dest[C_TOKEN_SIZE], cmp[C_TOKEN_SIZE], jmp[C_TOKEN_SIZE];
 
-	while(1) {
+	while(true) {
 		if(ln->content[i] == '\0') {
 			tmp[tmpi] = '\0';
 			if(hasjmp)
@@ -433,68 +362,17 @@ void transb(SYMBOL* ln) {
 }
 
 void translate(ASSEMBLER* a) {
-	for(int i = 0; i < a->lns->count; i++)
-		if(a->lns->items[i]->content[0] == '@')
-			transa(a->lns->items[i]);
+	LINELIST* curln = a->lns;
+	while(curln != NULL) {
+		if(curln->content[0] == '@')
+			transa(curln);
 		else
-			transb(a->lns->items[i]);
-}
-
-void gatherinfo(ASSEMBLER* a) {
-	char c;
-	bool readsmt = false;
-	bool comment = false;
-	int lnwidth = 1;
-
-	a->truelnscount = 1;
-	a->maxwidth = 0;
-	a->labels->count = 0;
-	a->lns->count = 0;
-
-	while(c = fgetc(a->input), c != -1) {
-		if(c == '\n') {
-			a->truelnscount++;
-			comment = false;
-			if(lnwidth > a->maxwidth)
-				a->maxwidth = lnwidth;
-			if(readsmt) {
-				if(a->lns->count == INST_LIMIT) {
-					fprintf(stderr, "Reached instruction limit (%i); line %i\n", INST_LIMIT, a->truelnscount);
-					exit(1);
-				}
-				a->lns->count++;
-			}
-			readsmt = false;
-			lnwidth = 1;
-			continue;
-		}
-		if(comment)
-			continue;
-		if(c == '(') {
-			a->labels->count++;
-			comment = true;
-			continue;
-		}
-		if(c == '/') {
-			char nc = fgetc(a->input);
-			if(nc == '/') {
-				comment = true;
-				continue;
-			}
-			ungetc(nc, a->input);
-		}
-		if(isspace(c)) {
-			continue;
-		}
-		readsmt = true;
-		lnwidth++;
+			transb(curln);
+		curln = curln->next;
 	}
-	rewind(a->input);
-	a->lncount = a->lns->count;
 }
 
 void freeassembler(ASSEMBLER* a) {
-	freesymbols(a->lns);
 	freesymbols(a->vars);
 	freesymbols(a->labels);
 	free(a);
