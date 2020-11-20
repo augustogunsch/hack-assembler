@@ -1,14 +1,11 @@
 #ifndef PARSER_H
 #define PARSER_H
+
 #include <stdio.h>
+#include "util.h"
 
 #define INST_LIMIT 1<<15
 
-typedef struct lnls {
-	char* content;
-	int truen;
-	struct lnls* next;
-} LINELIST;
 
 typedef struct {
 	FILE* input;

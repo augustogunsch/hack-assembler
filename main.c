@@ -12,14 +12,6 @@ char* getoutname(char* fname, int fnamelen) {
 	return outf;
 }
 
-void printlns(LINELIST* lns, FILE* stream) {
-	LINELIST* curln = lns;
-	while(curln != NULL) {
-		fprintf(stream, "%s\n", curln->content);
-		curln = curln->next;
-	}
-}
-
 int main(int argc, char* argv[]) {
 	if(argc < 2) {
 		printf("Usage: %s {input}\n", argv[0]);

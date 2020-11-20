@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include "parser.h"
+#include "util.h"
 
 void pushln(LINELIST** curln, char* tmpln, int lnind, int truen) {
 	int size = (lnind+1)*sizeof(char);
