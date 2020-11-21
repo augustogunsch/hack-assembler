@@ -15,5 +15,4 @@ typedef struct {
 
 PARSER* mkparser(FILE* input);
 void parse(PARSER* p);
-void freeparser(PARSER* p);
 #endif
