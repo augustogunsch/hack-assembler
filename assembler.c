@@ -238,6 +238,7 @@ void striplabels(ASSEMBLER* a) {
 				a->lns = curln->next;
 			LINELIST* tmp = curln;
 			curln = curln->next;
+			free(tmp->content);
 			free(tmp);
 		}
 		else {
@@ -372,8 +373,17 @@ void translate(ASSEMBLER* a) {
 	}
 }
 
+void freelns(LINELIST* lns) {
+	LINELIST* next = lns->next;
+	free(lns->content);
+	free(lns);
+	if(next != NULL)
+		freelns(next);
+}
+
 void freeassembler(ASSEMBLER* a) {
 	freesymbols(a->vars);
 	freesymbols(a->labels);
+	freelns(a->lns);
 	free(a);
 }

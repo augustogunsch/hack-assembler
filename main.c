@@ -35,6 +35,7 @@ int main(int argc, char* argv[]) {
 	parse(p);
 
 	ASSEMBLER* a = mkassembler(p->output);
+	free(p);
 
 	// variable substitution
 	preprocess(a);
